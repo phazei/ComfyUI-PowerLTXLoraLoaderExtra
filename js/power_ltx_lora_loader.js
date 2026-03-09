@@ -9,13 +9,28 @@ app.registerExtension({
         //  Layout Constants
         // ─────────────────────────────────────────────
 
-        const ROW_H      = 30;  // Height of each LoRA row
+        const ROW_H      = 24;  // Height of each LoRA row
         const START_Y    = 66;  // Y offset for first row (clears output slot labels + top margin)
         const BTN_H      = 25;  // Height of the "+ Add LoRA" button
         const BTN_PAD    = 5;   // Padding above the button
         const BOTTOM_PAD = 18;  // Padding below the button (clears resize handle)
         const MIN_WIDTH  = 500; // Minimum node width so name column stays usable
         const RIGHT_PAD  = 5;   // Right margin inside node
+
+        // Row element vertical alignment (relative to rowY)
+        const ROW_TEXT_BASELINE = Math.floor(ROW_H / 2) + 5;  // Baseline for text (grip, name, numbers)
+        const ROW_NUM_BOX_TOP   = 4;                           // Top offset for number box background
+        const ROW_NUM_BOX_H     = ROW_H - 8;                   // Height of number box (ROW_H - top - bottom margin)
+
+        // Config editor button (⚙) — positioned above column headers
+        const COG_BTN_W = 24;
+        const COG_BTN_H = 20;
+        const getCogBtnPos = (nodeW) => ({
+            x: nodeW - 110,
+            y: START_Y - 60,
+            w: COG_BTN_W,
+            h: COG_BTN_H
+        });
 
         // Fixed column widths (left-anchored columns)
         const GRIP_X   = 12;   // 5px left padding before the grip
@@ -167,6 +182,45 @@ app.registerExtension({
             let data = JSON.parse(this.properties.lora_data || "[]");
             const [x, y] = local_pos;
             const C = getCols(this.size[0]);
+
+            // --- Config editor button (⚙ cogwheel) ---
+            const cogBtn = getCogBtnPos(this.size[0]);
+            if (x >= cogBtn.x && x < cogBtn.x + cogBtn.w &&
+                y >= cogBtn.y && y < cogBtn.y + cogBtn.h) {
+                // Open config editor with compact JSON
+                const compactJson = JSON.stringify(data);
+                canvas.prompt("LoRA Config (JSON)", compactJson, (value) => {
+                    try {
+                        const parsed = JSON.parse(value);
+                        // Validate: must be an array
+                        if (!Array.isArray(parsed)) {
+                            console.warn("[PowerLTX] Invalid config: not an array");
+                            return;
+                        }
+                        // Sanitize each row: ensure required keys exist
+                        const sanitized = parsed.map(row => ({
+                            on:    row.on !== undefined ? row.on : true,
+                            lora:  row.lora || "None",
+                            str:   row.str !== undefined ? parseFloat(row.str) : 1.0,
+                            vid:   row.vid !== undefined ? parseFloat(row.vid) : 1.0,
+                            v2a:   row.v2a !== undefined ? parseFloat(row.v2a) : 1.0,
+                            aud:   row.aud !== undefined ? parseFloat(row.aud) : 1.0,
+                            a2v:   row.a2v !== undefined ? parseFloat(row.a2v) : 1.0,
+                            other: row.other !== undefined ? parseFloat(row.other) : 1.0,
+                        }));
+                        // Apply the validated config
+                        this.properties.lora_data = JSON.stringify(sanitized);
+                        syncToBackend(this);
+                        const sz = this.computeSize();
+                        this.setSize([Math.max(sz[0], this.size[0]), sz[1]]);
+                        this.setDirtyCanvas(true, true);
+                    } catch (err) {
+                        console.warn("[PowerLTX] Invalid JSON, ignoring:", err);
+                        // Do nothing — data stays unchanged
+                    }
+                }, e);
+                return true;
+            }
 
             // --- "+ Add LoRA" button ---
             const addBtnY = START_Y + (data.length * ROW_H) + BTN_PAD;
@@ -387,11 +441,24 @@ app.registerExtension({
 
         nodeType.prototype.onDrawForeground = function (ctx) {
             if (this.flags.collapsed) return;
+            
+            ctx.save();  // Save canvas state to restore at the end
 
             // Keep backend widget in sync on every repaint (covers workflow reload)
             syncToBackend(this);
             const data = JSON.parse(this.properties.lora_data || "[]");
             const C = getCols(this.size[0]);
+
+            // --- Config editor button (⚙) ---
+            const cogBtn = getCogBtnPos(this.size[0]);
+            ctx.fillStyle = "#2a2a2a";
+            ctx.beginPath();
+            ctx.roundRect(cogBtn.x, cogBtn.y, cogBtn.w, cogBtn.h, 3);
+            ctx.fill();
+            ctx.fillStyle = "#888";
+            ctx.font = "14px Arial";
+            ctx.textAlign = "center";
+            ctx.fillText("⚙", cogBtn.x + cogBtn.w / 2, cogBtn.y + cogBtn.h / 2 + 5);
 
             // --- Column headers ---
             ctx.font = "bold 11px Arial";
@@ -408,18 +475,27 @@ app.registerExtension({
                 const rowY = START_Y + (i * ROW_H);
                 const row  = data[i];
 
-                // Row background — highlighted when being dragged, otherwise alternating
+                // Row background — highlighted when being dragged, otherwise subtle alternating
                 if (this.draggingRow === i) {
-                    ctx.fillStyle = "#3a4a5a";    // blue-ish highlight for active drag
+                    // Stronger highlight for dragged row - noticeable on all themes
+                    ctx.fillStyle = "rgba(100, 150, 255, 0.25)";
+                    ctx.fillRect(5, rowY, this.size[0] - 10, ROW_H - 2);
+                    // Add border for extra definition
+                    ctx.strokeStyle = "rgba(100, 150, 255, 0.6)";
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(5, rowY, this.size[0] - 10, ROW_H - 2);
                 } else {
-                    ctx.fillStyle = i % 2 === 0 ? "#2a2a2a" : "#333333";
+                    // Subtle alternating rows with transparency (theme colors show through)
+                    ctx.fillStyle = i % 2 === 0 ? "rgba(0, 0, 0, 0.1)" : "rgba(255, 255, 255, 0.05)";
+                    ctx.fillRect(5, rowY, this.size[0] - 10, ROW_H - 2);
                 }
-                ctx.fillRect(5, rowY, this.size[0] - 10, ROW_H - 2);
 
-                // Grip handle
-                ctx.fillStyle = "#666";
+                // Grip handle with subtle background pill for visibility
+                ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+                ctx.fillRect(C.GRIP.x, rowY + 2, C.GRIP.w, ROW_H - 4);
+                ctx.fillStyle = LiteGraph.NODE_TEXT_COLOR || "#AAA";
                 ctx.textAlign = "left";
-                ctx.fillText("≡", C.GRIP.x + 2, rowY + 18);
+                ctx.fillText("☰", C.GRIP.x + 2, rowY + ROW_TEXT_BASELINE);
 
                 // Toggle dot — three visual states:
                 //   Grey (#888):    no LoRA selected (lora === "None")
@@ -440,30 +516,53 @@ app.registerExtension({
 
                 // LoRA name — truncated to fit the dynamic name column width.
                 // Estimate max characters based on column width (~7px per char at 12px Arial).
-                ctx.fillStyle = row.lora === "None" ? "#777" : "#FFF";
+                // Use theme text color with reduced opacity for disabled or "None" rows
+                if (row.lora === "None") {
+                    ctx.fillStyle = LiteGraph.NODE_TEXT_COLOR || "#AAA";
+                    ctx.globalAlpha = 0.4;
+                } else if (!row.on) {
+                    // Disabled row — muted text
+                    ctx.fillStyle = LiteGraph.NODE_TEXT_COLOR || "#DDD";
+                    ctx.globalAlpha = 0.35;
+                } else {
+                    ctx.fillStyle = LiteGraph.NODE_TEXT_COLOR || "#DDD";
+                    ctx.globalAlpha = 1.0;
+                }
                 ctx.textAlign = "left";
                 const rawName = row.lora.split(/[\\/]/).pop();
-                const maxChars = Math.max(5, Math.floor(C.NAME.w / 7));
-                const shortName = rawName.length > maxChars
-                    ? rawName.substring(0, maxChars - 1) + "…"
-                    : rawName;
-                ctx.fillText(shortName, C.NAME.x, rowY + 18);
+                // Use actual text measurement instead of character estimation
+                const availableWidth = C.NAME.w - 5;  // Leave 5px right margin
+                let displayName = rawName;
+                if (ctx.measureText(rawName).width > availableWidth) {
+                    // Truncate and add ellipsis, measuring as we go
+                    for (let len = rawName.length - 1; len > 0; len--) {
+                        const truncated = rawName.substring(0, len) + "…";
+                        if (ctx.measureText(truncated).width <= availableWidth) {
+                            displayName = truncated;
+                            break;
+                        }
+                    }
+                }
+                ctx.fillText(displayName, C.NAME.x, rowY + ROW_TEXT_BASELINE);
+                ctx.globalAlpha = 1.0;  // Reset alpha after drawing name
 
                 // Number value cells
                 for (const col of C.nums) {
                     // Dark cell background
                     ctx.fillStyle = "#111";
-                    ctx.fillRect(col.x, rowY + 4, col.w - 5, ROW_H - 10);
+                    ctx.fillRect(col.x, rowY + ROW_NUM_BOX_TOP, col.w - 5, ROW_NUM_BOX_H);
 
-                    // Numeric value centred in the cell
+                    // Numeric value centred in the cell — muted for disabled rows
                     ctx.fillStyle = "#00FFCC";
+                    ctx.globalAlpha = row.on ? 1.0 : 0.35;
                     ctx.textAlign = "center";
                     ctx.fillText(
                         row[col.key].toFixed(2),
                         col.x + (col.w / 2) - 2,
-                        rowY + 18
+                        rowY + ROW_TEXT_BASELINE
                     );
                 }
+                ctx.globalAlpha = 1.0;  // Reset alpha after number cells
 
                 // Trash / delete icon
                 ctx.fillStyle = "#f44336";
@@ -473,16 +572,24 @@ app.registerExtension({
 
             // --- "+ Add LoRA" button ---
             const addBtnY = START_Y + (data.length * ROW_H) + BTN_PAD;
-            ctx.fillStyle = "#1e3c28";
+            
+            // Theme-aware button with subtle background and border
+            ctx.fillStyle = "rgba(255, 255, 255, 0.12)";
             ctx.beginPath();
             ctx.roundRect(10, addBtnY, this.size[0] - 20, BTN_H, 4);
             ctx.fill();
-            ctx.fillStyle = "#a8f0c3";
+            
+            // Border for definition
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.25)";
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            
+            // Text in theme color
+            ctx.fillStyle = LiteGraph.NODE_TEXT_COLOR || "#DDD";
             ctx.textAlign = "center";
             ctx.fillText("+ Add LoRA", this.size[0] / 2, addBtnY + 17);
 
-            // Reset text alignment for any downstream drawing
-            ctx.textAlign = "left";
+            ctx.restore();  // Restore canvas state (font, colors, alpha, lineWidth, etc.)
         };
     }
 });

@@ -17,6 +17,7 @@ A powerful LoRA management node for ComfyUI that enables precise, layer-specific
 - **Intuitive UI**: Drag-and-drop row reordering, toggle enable/disable, quick click-to-edit values
 - **Optional Model Input**: Use as a standalone LoRA manager even without a model input
 - **JSON Output**: Export a rich JSON structure of all selected LoRAs for external processing
+- **Raw Config Editor**: Click the ⚙ button to copy/paste the entire LoRA configuration as JSON for easy sharing and batch editing
 - **Sidecar Metadata Support**: Automatically loads metadata from `.json` sidecar files alongside LoRA weights
 
 ## Installation
@@ -51,6 +52,7 @@ A powerful LoRA management node for ComfyUI that enables precise, layer-specific
 
 | Element | Action | Purpose |
 |---------|--------|---------|
+| **⚙** (Config) | Click | Open raw JSON editor for copy/paste/sharing |
 | **≡** (Grip) | Drag vertically | Reorder LoRA rows |
 | **●** (Toggle) | Click | Enable/disable the LoRA |
 | **LoRA Name** | Click | Open searchable LoRA selection menu |
@@ -84,31 +86,30 @@ The `lora_data` output includes all LoRAs with selected weights:
 ]
 ```
 
-## Workflow JSON Editing
+## Sharing and Batch Editing
 
-For hand-editing workflows in your favorite text editor:
+### Using the Config Editor (⚙)
+
+The easiest way to share or batch-edit your LoRA configuration:
+
+1. Click the **⚙** button in the top-right of the node
+2. Copy the compact JSON from the dialog
+3. Edit it in your text editor (VSCode, notepad, etc.)
+4. Paste the edited JSON back and press Enter
+5. Invalid JSON is ignored — the config stays unchanged
+
+**Example config:**
+```json
+[{"on":true,"lora":"style_lora.safetensors","str":1.0,"vid":0.8,"v2a":1.0,"aud":0.5,"a2v":1.0,"other":1.0},{"on":false,"lora":"face_detail.safetensors","str":0.7,"vid":1.0,"v2a":1.0,"aud":1.0,"a2v":1.0,"other":1.0}]
+```
+
+### Workflow JSON Editing
+
+You can also hand-edit workflows in the saved JSON file:
 
 1. Open the workflow JSON file
 2. Locate your node's `properties.lora_data` field (it's a proper JSON array, not escaped)
-3. Edit the LoRA list directly:
-
-```json
-"properties": {
-  "lora_data": [
-    {
-      "on": true,
-      "lora": "my_lora.safetensors",
-      "str": 1.0,
-      "vid": 0.8,
-      "v2a": 1.0,
-      "aud": 0.5,
-      "a2v": 1.0,
-      "other": 1.0
-    }
-  ]
-}
-```
-
+3. Edit the LoRA list directly
 4. Save and reload in ComfyUI — changes will be reflected in the node UI
 
 ## Key Differences from Power Lora Loader
