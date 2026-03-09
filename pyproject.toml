@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-PowerLTXLoraLoaderExtra"
 description = "Multi-LoRA LTX loader with layer-specific strength control. Supports per-LoRA adjustment of model, video, audio, and cross-attention strengths. Outputs modified model plus JSON metadata of applied LoRAs."
-version = "1.0.0"
+version = "1.0.1"
 license = {file = "LICENSE"}
 
 [project.urls]

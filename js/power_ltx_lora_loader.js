@@ -258,8 +258,10 @@ app.registerExtension({
                 // 3. LoRA name — opens searchable selection menu
                 if (x >= C.NAME.x && x < C.NAME.x + C.NAME.w) {
                     const loraList = nodeData.input.hidden.available_loras[0];
-                    const menu = new LiteGraph.ContextMenu(loraList, {
+                    new LiteGraph.ContextMenu(loraList, {
                         event: e,
+                        title: "Choose a lora",
+                        className: "dark",
                         scale: Math.max(1, canvas.ds.scale),
                         callback: (v) => {
                             data[i].lora = v;
@@ -268,25 +270,6 @@ app.registerExtension({
                             this.setDirtyCanvas(true);
                         }
                     });
-
-                    // Inject a search/filter input at the top of the context menu.
-                    // Guard against menu.root being undefined (varies by ComfyUI version).
-                    if (menu.root) {
-                        const searchWrap = document.createElement("div");
-                        searchWrap.style.cssText = "padding:5px;background:#333;border-bottom:1px solid #555;";
-                        const input = document.createElement("input");
-                        input.style.cssText = "width:100%;background:#222;color:#fff;border:1px solid #444;padding:4px;box-sizing:border-box;";
-                        input.placeholder = "Search LoRAs...";
-                        searchWrap.appendChild(input);
-                        menu.root.prepend(searchWrap);
-                        setTimeout(() => input.focus(), 10);
-                        input.addEventListener("input", (ev) => {
-                            const term = ev.target.value.toLowerCase();
-                            menu.root.querySelectorAll(".litemenu-entry").forEach(item => {
-                                item.style.display = item.textContent.toLowerCase().includes(term) ? "block" : "none";
-                            });
-                        });
-                    }
                     return true;
                 }
 
