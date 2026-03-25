@@ -96,6 +96,28 @@ app.registerExtension({
             str: 1.0, vid: 1.0, v2a: 1.0, aud: 1.0, a2v: 1.0, other: 1.0
         });
 
+        // Cache rgthree's LoRA info dialog class (loaded once, lazily)
+        let _RgthreeLoraInfoDialog = null;
+        const showLoraInfo = async (loraName) => {
+            if (!_RgthreeLoraInfoDialog) {
+                const origRegister = app.registerExtension.bind(app);
+                app.registerExtension = function(ext) {
+                    try { return origRegister(ext); }
+                    catch (e) { if (!String(e).includes("already registered")) throw e; }
+                };
+                try {
+                    const mod = await import("/rgthree/comfyui/dialog_info.js");
+                    _RgthreeLoraInfoDialog = mod.RgthreeLoraInfoDialog;
+                } catch (err) {
+                    console.warn("[PowerLTX] rgthree-comfy LoRA info dialog not available:", err);
+                } finally {
+                    app.registerExtension = origRegister;
+                }
+                if (!_RgthreeLoraInfoDialog) return;
+            }
+            new _RgthreeLoraInfoDialog(loraName).show();
+        };
+
         // ─────────────────────────────────────────────
         //  Node Lifecycle
         // ─────────────────────────────────────────────
@@ -179,6 +201,7 @@ app.registerExtension({
 
         nodeType.prototype.onMouseDown = function (e, local_pos, canvas) {
             if (this.flags.collapsed) return;
+            this._lastMousePos = local_pos;
             let data = JSON.parse(this.properties.lora_data || "[]");
             const [x, y] = local_pos;
             const C = getCols(this.size[0]);
@@ -310,6 +333,7 @@ app.registerExtension({
         // ─────────────────────────────────────────────
 
         nodeType.prototype.onMouseMove = function (e, local_pos, canvas) {
+            this._lastMousePos = local_pos;
             const [x, y] = local_pos;
 
             // ── Implicit mouseup detection ──
@@ -419,6 +443,49 @@ app.registerExtension({
         };
 
         // ─────────────────────────────────────────────
+        //  Right-click Context Menu (rgthree pattern)
+        // ─────────────────────────────────────────────
+        //
+        // Override getSlotInPosition so that right-clicking on a LoRA
+        // name row returns a fake "slot" object.  Then getSlotMenuOptions
+        // detects that slot and spawns a custom LiteGraph.ContextMenu,
+        // returning undefined to suppress the default node menu entirely.
+
+        const origGetSlotInPosition = nodeType.prototype.getSlotInPosition;
+        nodeType.prototype.getSlotInPosition = function (canvasX, canvasY) {
+            const slot = origGetSlotInPosition?.apply(this, arguments);
+            if (slot) return slot;
+
+            // Convert canvas coords to node-local
+            const localX = canvasX - this.pos[0];
+            const localY = canvasY - this.pos[1];
+            const C = getCols(this.size[0]);
+            const data = JSON.parse(this.properties.lora_data || "[]");
+
+            for (let i = 0; i < data.length; i++) {
+                const rowY = START_Y + (i * ROW_H);
+                if (localY < rowY || localY >= rowY + ROW_H) continue;
+                if (localX >= C.NAME.x && localX < C.NAME.x + C.NAME.w) {
+                    if (data[i].lora !== "None") {
+                        return { widget: { name: "__lora_row__", _loraRow: data[i] }, output: { type: "LORA_ROW" } };
+                    }
+                }
+                break;
+            }
+            return slot;
+        };
+
+        nodeType.prototype.getSlotMenuOptions = function (slot) {
+            if (slot?.widget?.name === "__lora_row__") {
+                const row = slot.widget._loraRow;
+                new LiteGraph.ContextMenu(
+                    [{ content: "ℹ️ Show LoRA Info", callback: () => showLoraInfo(row.lora) }],
+                    { event: app.canvas.last_mouse_event || window.event, title: row.lora.split(/[\\/]/).pop() }
+                );
+                return undefined;
+            }
+            return [];
+        };
         //  Drawing
         // ─────────────────────────────────────────────
 
